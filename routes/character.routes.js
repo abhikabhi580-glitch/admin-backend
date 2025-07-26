@@ -9,7 +9,7 @@ const upload = require('../middlewares/upload.middleware');
 router.post('/', auth, upload.single('image'), controller.createCharacter);
 
 // Read all
-router.get('/', auth, controller.getAllCharacters);
+router.get('/', controller.getAllCharacters);
 
 // Read by ID
 router.get('/:id', auth, controller.getCharacterById);

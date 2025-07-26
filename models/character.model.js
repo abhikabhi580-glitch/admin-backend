@@ -2,6 +2,10 @@ const mongoose = require('mongoose');
 
 const characterSchema = new mongoose.Schema({
     name: { type: String, required: true },
+    sub_title: { type: String },
+    line: { type: String },
+    badge: { type: String },
+    birthday: { type: Date },
     gender: { type: String },
     age: { type: Number },
     description: { type: String },
