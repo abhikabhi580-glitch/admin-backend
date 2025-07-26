@@ -13,7 +13,7 @@ const deleteImage = (imagePath) => {
 exports.createCharacter = async (req, res) => {
     try {
         const {
-            name, gender, age, description,
+            name, sub_title, line, badge, gender, age, description,
             ability, redeemed
         } = req.body;
 
@@ -21,6 +21,9 @@ exports.createCharacter = async (req, res) => {
 
         const newChar = new Character({
             name,
+            sub_title,
+            line,
+            badge,
             gender,
             age,
             description,
