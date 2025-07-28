@@ -1,4 +1,4 @@
-const db = require('../config/db'); // Your mysql2 connection pool
+const Character = require('../models/character.model');
 const cloudinary = require('../config/cloudinary');
 
 // Helper to delete image from Cloudinary
@@ -17,131 +17,123 @@ exports.createCharacter = async (req, res) => {
     try {
         const {
             name, sub_title, line, badge, gender, age,
-            description, ability, redeemed, bio_description, birthday
+            description, ability, redeemed, bio_description,
+            birthday
         } = req.body;
 
-        // Step 1: Insert character without image to get ID
-        const [result] = await db.execute(`
-            INSERT INTO characters (name, sub_title, line, badge, gender, age, description, ability, redeemed, bio_description, birthday, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        `, [name, sub_title, line, badge, gender, age, description, ability, redeemed || 0, bio_description, birthday]);
+        // Step 1: Create character without image to get ID
+        const tempChar = new Character({
+            name,
+            sub_title,
+            line,
+            badge,
+            gender,
+            age,
+            description,
+            ability,
+            redeemed,
+            bio_description,
+            birthday,
+            created_at: new Date(),
+        });
 
-        const characterId = result.insertId;
+        await tempChar.save(); // saves & generates _id
 
-        // Step 2: Upload image to Cloudinary
-        let image = null;
+        // Step 2: Upload image to Cloudinary using character ID as public_id
+        let imageUrl = null;
         let imagePublicId = null;
 
         if (req.file?.path) {
             const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `admin-panel/character/${characterId}`,
+                public_id: `character/${tempChar._id}`,
                 overwrite: true,
             });
 
-            image = uploadResult.secure_url;
+            imageUrl = uploadResult.secure_url;
             imagePublicId = uploadResult.public_id;
-
-            // Step 3: Update DB with image
-            await db.execute(`
-                UPDATE characters SET image = ?, imagePublicId = ? WHERE id = ?
-            `, [image, imagePublicId, characterId]);
         }
 
-        const [newCharacter] = await db.execute(`SELECT * FROM characters WHERE id = ?`, [characterId]);
-        res.status(201).json(newCharacter[0]);
+        // Step 3: Update character with image info
+        tempChar.image = imageUrl;
+        tempChar.imagePublicId = imagePublicId;
 
+        await tempChar.save();
+
+        res.status(201).json(tempChar);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get All Characters
+// Get all characters
 exports.getAllCharacters = async (req, res) => {
     try {
-        const [rows] = await db.execute(`SELECT * FROM characters ORDER BY created_at DESC`);
-        res.json(rows);
+        const characters = await Character.find().sort({ created_at: -1 });
+        res.json(characters);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get Character by ID
+// Get single character
 exports.getCharacterById = async (req, res) => {
     try {
-        const [rows] = await db.execute(`SELECT * FROM characters WHERE id = ?`, [req.params.id]);
+        const character = await Character.findById(req.params.id);
+        if (!character) return res.status(404).json({ error: 'Character not found' });
 
-        if (rows.length === 0)
-            return res.status(404).json({ error: 'Character not found' });
-
-        res.json(rows[0]);
+        res.json(character);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Update Character
+// Update character
 exports.updateCharacter = async (req, res) => {
     try {
-        const [existingRows] = await db.execute(`SELECT * FROM characters WHERE id = ?`, [req.params.id]);
-        if (existingRows.length === 0)
-            return res.status(404).json({ error: 'Character not found' });
+        const character = await Character.findById(req.params.id);
+        if (!character) return res.status(404).json({ error: 'Character not found' });
 
-        const character = existingRows[0];
+        const updatableFields = [
+            'name', 'sub_title', 'line', 'badge', 'gender',
+            'age', 'description', 'ability', 'redeemed', 'bio_description', 'birthday'
+        ];
 
-        const {
-            name, sub_title, line, badge, gender, age,
-            description, ability, redeemed, bio_description, birthday
-        } = req.body;
+        updatableFields.forEach(field => {
+            if (req.body[field] !== undefined) {
+                character[field] = req.body[field];
+            }
+        });
 
-        // Handle image update
-        let image = character.image;
-        let imagePublicId = character.imagePublicId;
-
+        // Handle new image upload
         if (req.file?.path) {
-            await deleteImage(imagePublicId);
+            await deleteImage(character.imagePublicId);
 
             const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `admin-panel/character/${character.id}`,
+                public_id: `character/${character._id}`,
                 overwrite: true,
             });
 
-            image = uploadResult.secure_url;
-            imagePublicId = uploadResult.public_id;
+            character.image = uploadResult.secure_url;
+            character.imagePublicId = uploadResult.public_id;
         }
 
-        // Update DB
-        await db.execute(`
-            UPDATE characters SET
-                name = ?, sub_title = ?, line = ?, badge = ?, gender = ?, age = ?,
-                description = ?, ability = ?, redeemed = ?, bio_description = ?, birthday = ?,
-                image = ?, imagePublicId = ?
-            WHERE id = ?
-        `, [
-            name, sub_title, line, badge, gender, age,
-            description, ability, redeemed, bio_description, birthday,
-            image, imagePublicId, req.params.id
-        ]);
+        await character.save();
 
-        const [updatedRows] = await db.execute(`SELECT * FROM characters WHERE id = ?`, [req.params.id]);
-        res.json({ message: 'Character updated', character: updatedRows[0] });
-
+        res.json({ message: 'Character updated', character });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Delete Character
+// Delete character
 exports.deleteCharacter = async (req, res) => {
     try {
-        const [rows] = await db.execute(`SELECT * FROM characters WHERE id = ?`, [req.params.id]);
-        if (rows.length === 0)
-            return res.status(404).json({ error: 'Character not found' });
-
-        const character = rows[0];
+        const character = await Character.findById(req.params.id);
+        if (!character) return res.status(404).json({ error: 'Character not found' });
 
         await deleteImage(character.imagePublicId);
-        await db.execute(`DELETE FROM characters WHERE id = ?`, [req.params.id]);
+        await character.deleteOne();
 
         res.json({ message: 'Character deleted successfully' });
     } catch (err) {
