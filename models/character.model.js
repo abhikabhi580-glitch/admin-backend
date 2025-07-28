@@ -5,7 +5,7 @@ const characterSchema = new mongoose.Schema({
     sub_title: { type: String },
     line: { type: String },
     badge: { type: String },
-    birthday: { type: Date },
+    birthday: { type: String },
     gender: { type: String },
     age: { type: Number },
     bio_description: { type: String },
