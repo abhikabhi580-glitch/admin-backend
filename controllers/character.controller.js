@@ -14,40 +14,29 @@ const deleteImage = async (publicId) => {
 
 // Create Character
 exports.createCharacter = async (req, res) => {
+    console.log(req.body);
+
     try {
         const {
             name, sub_title, line, badge, gender, age,
             description, ability, redeemed, bio_description, birthday
         } = req.body;
 
-        // Step 1: Insert character without image to get ID
-        const [result] = await db.execute(`
-            INSERT INTO characters (name, sub_title, line, badge, gender, age, description, ability, redeemed, bio_description, birthday, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        `, [name, sub_title, line, badge, gender, age, description, ability, redeemed || 0, bio_description, birthday]);
+        const newCharacter = {
+            name, sub_title, line, badge, gender, age,
+            description, ability, redeemed, bio_description, birthday,
+            created_at: new Date()
+        };
 
-        const characterId = result.insertId;
-
-        // Step 2: Upload image to Cloudinary
-        let image = null;
-        let imagePublicId = null;
-
-        if (req.file?.path) {
-            const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `admin-panel/character/${characterId}`,
-                overwrite: true,
-            });
-
-            image = uploadResult.secure_url;
-            imagePublicId = uploadResult.public_id;
-
-            // Step 3: Update DB with image
-            await db.execute(`
-                UPDATE characters SET image = ?, imagePublicId = ? WHERE id = ?
-            `, [image, imagePublicId, characterId]);
+        if (req.file) {
+            newCharacter.image = req.file.path;          // Cloudinary URL
+            newCharacter.imagePublicId = req.file.filename; // Cloudinary public_id
         }
 
-        const [newCharacter] = await db.execute(`SELECT * FROM characters WHERE id = ?`, [characterId]);
+        const [result] = await db.query(
+            `INSERT INTO characters (name, sub_title, line, badge, gender, age, description, ability, redeemed, bio_description, birthday, image, imagePublicId, created_at) VALUES (?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?)`,
+            [newCharacter.name, newCharacter.sub_title, newCharacter.line, newCharacter.badge, newCharacter.gender, newCharacter.age, newCharacter.description, newCharacter.ability, newCharacter.redeemed, newCharacter.bio_description, newCharacter.birthday, newCharacter.image, newCharacter.imagePublicId, newCharacter.created_at]
+        );
         res.status(201).json(newCharacter[0]);
 
     } catch (err) {

@@ -3,10 +3,10 @@ const router = express.Router();
 
 const controller = require('../controllers/vehicle.controller');
 const auth = require('../middlewares/auth.middleware');
-const upload = require('../middlewares/upload.middleware');
+// const upload = require('../middlewares/upload.middleware');
 
 // Create
-router.post('/', auth, upload.single('image'), controller.createVehicle);
+router.post('/', auth,  controller.createVehicle);
 
 // Read all
 router.get('/', auth, controller.getAllVehicles);
@@ -15,7 +15,7 @@ router.get('/', auth, controller.getAllVehicles);
 router.get('/:id', auth, controller.getVehicleById);
 
 // Update
-router.put('/:id', auth, upload.single('image'), controller.updateVehicle);
+router.put('/:id', auth,  controller.updateVehicle);
 
 // Delete
 router.delete('/:id', auth, controller.deleteVehicle);
