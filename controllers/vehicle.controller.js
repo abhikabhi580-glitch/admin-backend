@@ -1,7 +1,7 @@
-const Vehicle = require('../models/vehicle.model');
+const db = require('../config/db');
 const cloudinary = require('../config/cloudinary');
 
-// Delete image from Cloudinary
+// Helper: Delete image from Cloudinary
 const deleteImage = async (publicId) => {
     if (publicId) {
         try {
@@ -12,108 +12,127 @@ const deleteImage = async (publicId) => {
     }
 };
 
-// Create Vehicle
+// CREATE VEHICLE
 exports.createVehicle = async (req, res) => {
     try {
         const {
-            name, hp, acceleration_torque, speed,
-            control, seats, ideal_use_case
+            name, hp, acceleration_torque,
+            speed, control, seats, ideal_use_case
         } = req.body;
 
-        const newVehicle = new Vehicle({
-            name,
-            hp,
-            acceleration_torque,
-            speed,
-            control,
-            seats,
-            ideal_use_case,
-            created_at: new Date()
-        });
+        // Step 1: Insert into DB without image
+        const insertSql = `
+            INSERT INTO vehicles 
+            (name, hp, acceleration_torque, speed, control, seats, ideal_use_case, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        `;
+        const [result] = await db.execute(insertSql, [
+            name, hp, acceleration_torque, speed, control, seats, ideal_use_case
+        ]);
 
-        await newVehicle.save();
+        const vehicleId = result.insertId;
+        let imageUrl = null;
+        let imagePublicId = null;
 
-        // Upload image if provided
+        // Step 2: Upload image
         if (req.file?.path) {
             const upload = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `vehicle/${newVehicle._id}`,
-                overwrite: true,
+                public_id: `admin-panel/vehicle/${vehicleId}`,
+                overwrite: true
             });
 
-            newVehicle.image = upload.secure_url;
-            newVehicle.imagePublicId = upload.public_id;
-            await newVehicle.save();
+            imageUrl = upload.secure_url;
+            imagePublicId = upload.public_id;
+
+            // Step 3: Update DB with image
+            const updateSql = `UPDATE vehicles SET image = ?, imagePublicId = ? WHERE id = ?`;
+            await db.execute(updateSql, [imageUrl, imagePublicId, vehicleId]);
         }
 
-        res.status(201).json(newVehicle);
+        const [rows] = await db.execute(`SELECT * FROM vehicles WHERE id = ?`, [vehicleId]);
+        res.status(201).json(rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get All Vehicles
+// GET ALL VEHICLES
 exports.getAllVehicles = async (req, res) => {
     try {
-        const vehicles = await Vehicle.find().sort({ created_at: -1 });
-        res.json(vehicles);
+        const [rows] = await db.execute(`SELECT * FROM vehicles ORDER BY created_at DESC`);
+        res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get Vehicle By ID
+// GET VEHICLE BY ID
 exports.getVehicleById = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
-        if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+        const [rows] = await db.execute(`SELECT * FROM vehicles WHERE id = ?`, [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Vehicle not found' });
 
-        res.json(vehicle);
+        res.json(rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Update Vehicle
+// UPDATE VEHICLE
 exports.updateVehicle = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
-        if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+        const [rows] = await db.execute(`SELECT * FROM vehicles WHERE id = ?`, [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Vehicle not found' });
 
-        const fields = ['name', 'hp', 'acceleration_torque', 'speed', 'control', 'seats', 'ideal_use_case'];
-        fields.forEach((field) => {
-            if (req.body[field] !== undefined) {
-                vehicle[field] = req.body[field];
-            }
-        });
+        const vehicle = rows[0];
+        const {
+            name = vehicle.name,
+            hp = vehicle.hp,
+            acceleration_torque = vehicle.acceleration_torque,
+            speed = vehicle.speed,
+            control = vehicle.control,
+            seats = vehicle.seats,
+            ideal_use_case = vehicle.ideal_use_case
+        } = req.body;
 
-        // Replace image if new one is uploaded
+        // Step 1: Update fields
+        await db.execute(`
+            UPDATE vehicles 
+            SET name = ?, hp = ?, acceleration_torque = ?, speed = ?, control = ?, seats = ?, ideal_use_case = ? 
+            WHERE id = ?
+        `, [name, hp, acceleration_torque, speed, control, seats, ideal_use_case, req.params.id]);
+
+        // Step 2: Upload new image if provided
         if (req.file?.path) {
             await deleteImage(vehicle.imagePublicId);
 
             const upload = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `vehicle/${vehicle._id}`,
-                overwrite: true,
+                public_id: `admin-panel/vehicle/${req.params.id}`,
+                overwrite: true
             });
 
-            vehicle.image = upload.secure_url;
-            vehicle.imagePublicId = upload.public_id;
+            await db.execute(`
+                UPDATE vehicles 
+                SET image = ?, imagePublicId = ? 
+                WHERE id = ?
+            `, [upload.secure_url, upload.public_id, req.params.id]);
         }
 
-        await vehicle.save();
-        res.json({ message: 'Vehicle updated', vehicle });
+        const [updated] = await db.execute(`SELECT * FROM vehicles WHERE id = ?`, [req.params.id]);
+        res.json({ message: 'Vehicle updated', vehicle: updated[0] });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Delete Vehicle
+// DELETE VEHICLE
 exports.deleteVehicle = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
-        if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+        const [rows] = await db.execute(`SELECT * FROM vehicles WHERE id = ?`, [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Vehicle not found' });
 
-        await deleteImage(vehicle.imagePublicId);
-        await vehicle.deleteOne();
+        await deleteImage(rows[0].imagePublicId);
+        await db.execute(`DELETE FROM vehicles WHERE id = ?`, [req.params.id]);
 
         res.json({ message: 'Vehicle deleted successfully' });
     } catch (err) {
