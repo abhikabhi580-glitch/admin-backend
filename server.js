@@ -1,11 +1,19 @@
 require('dotenv').config();
 const app = require('./app');
-const connectDB = require('./config/db');
+const db = require('./config/db');
 
 const PORT = process.env.PORT || 5000;
 
-connectDB();
+// MySQL connection check
+db.connect((err) => {
+    if (err) {
+        console.error('❌ MySQL connection error:', err.message);
+        process.exit(1);
+    }
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log('✅ Connected to MySQL');
+
+    app.listen(PORT, () => {
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+    });
 });
