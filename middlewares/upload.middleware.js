@@ -1,39 +1,27 @@
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../config/cloudinary");
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        let type = 'other';
+const storage = new CloudinaryStorage({
+    cloudinary,
+    params: async (req, file) => {
+        let folder = "others";
+        if (req.baseUrl.includes("character")) folder = "character";
+        if (req.baseUrl.includes("pet")) folder = "pet";
+        if (req.baseUrl.includes("vehicle")) folder = "vehicle";
 
-        if (req.baseUrl.includes('character')) type = 'character';
-        if (req.baseUrl.includes('pet')) type = 'pet';
-        if (req.baseUrl.includes('vehicle')) type = 'vehicle';
+        // Extract the resource ID from route params
+        const resourceId = req.params.id || Date.now(); // fallback if id not available
 
-        const folder = `uploads/${type}`;
-        fs.mkdirSync(folder, { recursive: true });
-
-        cb(null, folder);
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        const name = `${Date.now()}${ext}`;
-        cb(null, name);
+        return {
+            folder: `admin-panel/${folder}`,
+            allowed_formats: ["jpg", "jpeg", "png", "webp"],
+            public_id: `${resourceId}`, // Use the ID as the filename
+            overwrite: true, // Optional, but ensures it replaces old file
+        };
     }
 });
 
-const fileFilter = (req, file, cb) => {
-    const allowed = /jpeg|jpg|png/;
-    const ext = path.extname(file.originalname).toLowerCase();
-    const mime = file.mimetype;
-
-    if (allowed.test(ext) && allowed.test(mime)) {
-        cb(null, true);
-    } else {
-        cb(new Error('Only jpg/jpeg/png images are allowed'));
-    }
-};
-
-const upload = multer({ storage, fileFilter });
+const upload = multer({ storage });
 
 module.exports = upload;

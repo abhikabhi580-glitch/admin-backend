@@ -8,7 +8,8 @@ const vehicleSchema = new mongoose.Schema({
     control: { type: String },
     seats: { type: String },
     ideal_use_case: { type: String },
-    image: { type: String },
+    image: { type: String },            // Cloudinary image URL
+    imagePublicId: { type: String },    // Cloudinary public ID for deletion
     created_at: { type: Date, default: Date.now }
 });
 
