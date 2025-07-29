@@ -4,9 +4,9 @@ const Vehicle = require('../models/vehicle.model');
 
 exports.getDashboardSummary = async (req, res) => {
     try {
-        const totalCharacters = await Character.countDocuments();
-        const totalPets = await Pet.countDocuments();
-        const totalVehicles = await Vehicle.countDocuments();
+        const totalCharacters = await Character.count();
+        const totalPets = await Pet.count();
+        const totalVehicles = await Vehicle.count();
 
         res.json({
             totalCharacters,

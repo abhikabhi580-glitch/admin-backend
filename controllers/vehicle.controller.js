@@ -1,7 +1,27 @@
 const Vehicle = require('../models/vehicle.model');
 const cloudinary = require('../config/cloudinary');
+const streamifier = require('streamifier');
 
-// Delete image from Cloudinary
+// Helper: Upload buffer to Cloudinary
+const uploadToCloudinary = (buffer, publicId) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                public_id: publicId,
+                folder: 'admin-panel/vehicle',
+                overwrite: true,
+                resource_type: 'image',
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        streamifier.createReadStream(buffer).pipe(stream);
+    });
+};
+
+// Helper: Delete from Cloudinary
 const deleteImage = async (publicId) => {
     if (publicId) {
         try {
@@ -12,15 +32,10 @@ const deleteImage = async (publicId) => {
     }
 };
 
-// Create Vehicle
+// CREATE Vehicle
 exports.createVehicle = async (req, res) => {
     try {
         const {
-            name, hp, acceleration_torque, speed,
-            control, seats, ideal_use_case
-        } = req.body;
-
-        const newVehicle = new Vehicle({
             name,
             hp,
             acceleration_torque,
@@ -28,18 +43,21 @@ exports.createVehicle = async (req, res) => {
             control,
             seats,
             ideal_use_case,
-            created_at: new Date()
+        } = req.body;
+
+        const newVehicle = await Vehicle.create({
+            name,
+            hp,
+            acceleration_torque,
+            speed,
+            control,
+            seats,
+            ideal_use_case,
+            created_at: new Date(),
         });
 
-        await newVehicle.save();
-
-        // Upload image if provided
-        if (req.file?.path) {
-            const upload = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `vehicle/${newVehicle._id}`,
-                overwrite: true,
-            });
-
+        if (req.file?.buffer) {
+            const upload = await uploadToCloudinary(req.file.buffer, `${newVehicle.id}`);
             newVehicle.image = upload.secure_url;
             newVehicle.imagePublicId = upload.public_id;
             await newVehicle.save();
@@ -51,20 +69,20 @@ exports.createVehicle = async (req, res) => {
     }
 };
 
-// Get All Vehicles
+// GET All Vehicles
 exports.getAllVehicles = async (req, res) => {
     try {
-        const vehicles = await Vehicle.find().sort({ created_at: -1 });
+        const vehicles = await Vehicle.findAll({ order: [['created_at', 'DESC']] });
         res.json(vehicles);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get Vehicle By ID
+// GET Vehicle By ID
 exports.getVehicleById = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
+        const vehicle = await Vehicle.findByPk(req.params.id);
         if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
 
         res.json(vehicle);
@@ -73,28 +91,31 @@ exports.getVehicleById = async (req, res) => {
     }
 };
 
-// Update Vehicle
+// UPDATE Vehicle
 exports.updateVehicle = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
+        const vehicle = await Vehicle.findByPk(req.params.id);
         if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
 
-        const fields = ['name', 'hp', 'acceleration_torque', 'speed', 'control', 'seats', 'ideal_use_case'];
+        const fields = [
+            'name',
+            'hp',
+            'acceleration_torque',
+            'speed',
+            'control',
+            'seats',
+            'ideal_use_case',
+        ];
+
         fields.forEach((field) => {
             if (req.body[field] !== undefined) {
                 vehicle[field] = req.body[field];
             }
         });
 
-        // Replace image if new one is uploaded
-        if (req.file?.path) {
+        if (req.file?.buffer) {
             await deleteImage(vehicle.imagePublicId);
-
-            const upload = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `vehicle/${vehicle._id}`,
-                overwrite: true,
-            });
-
+            const upload = await uploadToCloudinary(req.file.buffer, `${vehicle.id}`);
             vehicle.image = upload.secure_url;
             vehicle.imagePublicId = upload.public_id;
         }
@@ -106,14 +127,14 @@ exports.updateVehicle = async (req, res) => {
     }
 };
 
-// Delete Vehicle
+// DELETE Vehicle
 exports.deleteVehicle = async (req, res) => {
     try {
-        const vehicle = await Vehicle.findById(req.params.id);
+        const vehicle = await Vehicle.findByPk(req.params.id);
         if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
 
         await deleteImage(vehicle.imagePublicId);
-        await vehicle.deleteOne();
+        await vehicle.destroy();
 
         res.json({ message: 'Vehicle deleted successfully' });
     } catch (err) {

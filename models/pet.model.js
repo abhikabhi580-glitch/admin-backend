@@ -1,13 +1,33 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
-const petSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    sub_title: { type: String },
-    description: { type: String },
-    ability: { type: String },
-    image: { type: String },           // Cloudinary image URL
-    imagePublicId: { type: String },   // Cloudinary public ID for deleting/updating
-    created_at: { type: Date, default: Date.now }
+const Pet = sequelize.define('Pet', {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    sub_title: {
+        type: DataTypes.STRING
+    },
+    description: {
+        type: DataTypes.STRING
+    },
+    ability: {
+        type: DataTypes.STRING
+    },
+    image: {
+        type: DataTypes.STRING
+    },
+    imagePublicId: {
+        type: DataTypes.STRING
+    },
+    created_at: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW
+    }
+}, {
+    tableName: 'pets',
+    timestamps: false // You can change to true if you prefer Sequelize auto timestamps
 });
 
-module.exports = mongoose.model('Pet', petSchema);
+module.exports = Pet;

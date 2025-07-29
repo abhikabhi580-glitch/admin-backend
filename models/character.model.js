@@ -1,20 +1,33 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
-const characterSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    sub_title: { type: String },
-    line: { type: String },
-    badge: { type: String },
-    birthday: { type: String },
-    gender: { type: String },
-    age: { type: Number },
-    bio_description: { type: String },
-    description: { type: String },
-    ability: { type: String },
-    redeemed: { type: Number, default: 0 },
-    image: { type: String }, // Cloudinary image URL
-    imagePublicId: { type: String }, // Cloudinary public_id for management
-    created_at: { type: Date, default: Date.now }
+const Character = sequelize.define('Character', {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    sub_title: DataTypes.STRING,
+    line: DataTypes.STRING,
+    badge: DataTypes.STRING,
+    birthday: DataTypes.STRING,
+    gender: DataTypes.STRING,
+    age: DataTypes.INTEGER,
+    bio_description: DataTypes.STRING,
+    description: DataTypes.STRING,
+    ability: DataTypes.STRING,
+    redeemed: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0
+    },
+    image: DataTypes.STRING,
+    imagePublicId: DataTypes.STRING,
+    created_at: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW
+    }
+}, {
+    tableName: 'characters',
+    timestamps: false // You can enable this if you want Sequelize to manage createdAt/updatedAt
 });
 
-module.exports = mongoose.model('Character', characterSchema);
+module.exports = Character;

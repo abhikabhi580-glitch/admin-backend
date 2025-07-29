@@ -1,16 +1,42 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
-const vehicleSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    hp: { type: String },
-    acceleration_torque: { type: String },
-    speed: { type: String },
-    control: { type: String },
-    seats: { type: String },
-    ideal_use_case: { type: String },
-    image: { type: String },            // Cloudinary image URL
-    imagePublicId: { type: String },    // Cloudinary public ID for deletion
-    created_at: { type: Date, default: Date.now }
+const Vehicle = sequelize.define('Vehicle', {
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    hp: {
+        type: DataTypes.STRING
+    },
+    acceleration_torque: {
+        type: DataTypes.STRING
+    },
+    speed: {
+        type: DataTypes.STRING
+    },
+    control: {
+        type: DataTypes.STRING
+    },
+    seats: {
+        type: DataTypes.STRING
+    },
+    ideal_use_case: {
+        type: DataTypes.STRING
+    },
+    image: {
+        type: DataTypes.STRING
+    },
+    imagePublicId: {
+        type: DataTypes.STRING
+    },
+    created_at: {
+        type: DataTypes.DATE,
+        defaultValue: DataTypes.NOW
+    }
+}, {
+    tableName: 'vehicles',
+    timestamps: false // You can enable Sequelize's default timestamps if needed
 });
 
-module.exports = mongoose.model('Vehicle', vehicleSchema);
+module.exports = Vehicle;

@@ -1,16 +1,20 @@
-const mongoose = require('mongoose');
-
+const sequelize = require('./sequelize');
 const connectDB = async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
-        console.log('✅ MongoDB Atlas connected');
-    } catch (error) {
-        console.error('❌ MongoDB connection error:', error.message);
+        await sequelize.authenticate();
+        console.log('✅ MySQL connected');
+
+        // Load models AFTER sequelize is defined
+        require('../models/character.model');
+        require('../models/pet.model');
+        require('../models/vehicle.model');
+
+        await sequelize.sync({ alter: true });
+        console.log('✅ Models synchronized');
+    } catch (err) {
+        console.error('❌ DB Error:', err.message);
         process.exit(1);
     }
 };
 
-module.exports = connectDB;
+module.exports = { connectDB, sequelize };

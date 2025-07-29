@@ -1,7 +1,28 @@
 const Pet = require('../models/pet.model');
 const cloudinary = require('../config/cloudinary');
+const streamifier = require('streamifier');
 
-// Delete image from Cloudinary
+// Helper: Upload image from buffer
+const uploadToCloudinary = (buffer, publicId) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                public_id: publicId,
+                folder: 'admin-panel/pet',
+                overwrite: true,
+                resource_type: 'image',
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+
+        streamifier.createReadStream(buffer).pipe(stream);
+    });
+};
+
+// Helper: Delete Cloudinary image
 const deleteImage = async (publicId) => {
     if (publicId) {
         try {
@@ -12,13 +33,12 @@ const deleteImage = async (publicId) => {
     }
 };
 
-// Create Pet
+// CREATE Pet
 exports.createPet = async (req, res) => {
     try {
         const { name, sub_title, description, ability } = req.body;
 
-        // Step 1: Save basic data to get _id
-        const tempPet = new Pet({
+        const newPet = await Pet.create({
             name,
             sub_title,
             description,
@@ -26,47 +46,33 @@ exports.createPet = async (req, res) => {
             created_at: new Date(),
         });
 
-        await tempPet.save();
-
-        // Step 2: Upload image to Cloudinary
-        let imageUrl = null;
-        let imagePublicId = null;
-
-        if (req.file?.path) {
-            const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `pet/${tempPet._id}`,
-                overwrite: true,
-            });
-
-            imageUrl = uploadResult.secure_url;
-            imagePublicId = uploadResult.public_id;
+        if (req.file?.buffer) {
+            const result = await uploadToCloudinary(req.file.buffer, `${newPet.id}`);
+            newPet.image = result.secure_url;
+            newPet.imagePublicId = result.public_id;
+            await newPet.save();
         }
 
-        // Step 3: Save image data
-        tempPet.image = imageUrl;
-        tempPet.imagePublicId = imagePublicId;
-        await tempPet.save();
-
-        res.status(201).json(tempPet);
+        res.status(201).json(newPet);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get All Pets
+// READ All Pets
 exports.getAllPets = async (req, res) => {
     try {
-        const pets = await Pet.find().sort({ created_at: -1 });
+        const pets = await Pet.findAll({ order: [['created_at', 'DESC']] });
         res.json(pets);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get Pet By ID
+// READ Pet by ID
 exports.getPetById = async (req, res) => {
     try {
-        const pet = await Pet.findById(req.params.id);
+        const pet = await Pet.findByPk(req.params.id);
         if (!pet) return res.status(404).json({ error: 'Pet not found' });
 
         res.json(pet);
@@ -75,30 +81,24 @@ exports.getPetById = async (req, res) => {
     }
 };
 
-// Update Pet
+// UPDATE Pet
 exports.updatePet = async (req, res) => {
     try {
-        const pet = await Pet.findById(req.params.id);
+        const pet = await Pet.findByPk(req.params.id);
         if (!pet) return res.status(404).json({ error: 'Pet not found' });
 
         const fields = ['name', 'sub_title', 'description', 'ability'];
-        fields.forEach((field) => {
+        fields.forEach(field => {
             if (req.body[field] !== undefined) {
                 pet[field] = req.body[field];
             }
         });
 
-        // Upload new image
-        if (req.file?.path) {
+        if (req.file?.buffer) {
             await deleteImage(pet.imagePublicId);
-
-            const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `pet/${pet._id}`,
-                overwrite: true,
-            });
-
-            pet.image = uploadResult.secure_url;
-            pet.imagePublicId = uploadResult.public_id;
+            const result = await uploadToCloudinary(req.file.buffer, `${pet.id}`);
+            pet.image = result.secure_url;
+            pet.imagePublicId = result.public_id;
         }
 
         await pet.save();
@@ -108,14 +108,14 @@ exports.updatePet = async (req, res) => {
     }
 };
 
-// Delete Pet
+// DELETE Pet
 exports.deletePet = async (req, res) => {
     try {
-        const pet = await Pet.findById(req.params.id);
+        const pet = await Pet.findByPk(req.params.id);
         if (!pet) return res.status(404).json({ error: 'Pet not found' });
 
         await deleteImage(pet.imagePublicId);
-        await pet.deleteOne();
+        await pet.destroy();
 
         res.json({ message: 'Pet deleted successfully' });
     } catch (err) {

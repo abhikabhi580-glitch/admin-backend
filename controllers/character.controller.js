@@ -1,85 +1,78 @@
 const Character = require('../models/character.model');
 const cloudinary = require('../config/cloudinary');
+const streamifier = require('streamifier');
 
-// Helper to delete image from Cloudinary
+// Helper: Upload image from buffer
+const uploadToCloudinary = (buffer, publicId) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                public_id: publicId,
+                folder: 'admin-panel/character',
+                overwrite: true,
+                resource_type: 'image',
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+
+        streamifier.createReadStream(buffer).pipe(stream);
+    });
+};
+
+// Helper: Delete image from Cloudinary
 const deleteImage = async (publicId) => {
     if (publicId) {
         try {
             await cloudinary.uploader.destroy(publicId);
         } catch (err) {
-            console.error('Error deleting image from Cloudinary:', err.message);
+            console.error('Cloudinary delete error:', err.message);
         }
     }
 };
 
-// Create Character
+// CREATE
 exports.createCharacter = async (req, res) => {
     try {
-        const {
-            name, sub_title, line, badge, gender, age,
-            description, ability, redeemed, bio_description,
-            birthday
-        } = req.body;
+        const { name, sub_title, line, badge, gender, age,
+            description, ability, redeemed, bio_description, birthday } = req.body;
 
-        // Step 1: Create character without image to get ID
-        const tempChar = new Character({
-            name,
-            sub_title,
-            line,
-            badge,
-            gender,
-            age,
-            description,
-            ability,
-            redeemed,
-            bio_description,
-            birthday,
+        const newCharacter = await Character.create({
+            name, sub_title, line, badge, gender, age,
+            description, ability, redeemed, bio_description, birthday,
             created_at: new Date(),
         });
 
-        await tempChar.save(); // saves & generates _id
+        if (req.file?.buffer) {
+            const result = await uploadToCloudinary(req.file.buffer, `${newCharacter.id}`);
 
-        // Step 2: Upload image to Cloudinary using character ID as public_id
-        let imageUrl = null;
-        let imagePublicId = null;
-
-        if (req.file?.path) {
-            const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `character/${tempChar._id}`,
-                overwrite: true,
-            });
-
-            imageUrl = uploadResult.secure_url;
-            imagePublicId = uploadResult.public_id;
+            newCharacter.image = result.secure_url;
+            newCharacter.imagePublicId = result.public_id;
+            await newCharacter.save();
         }
 
-        // Step 3: Update character with image info
-        tempChar.image = imageUrl;
-        tempChar.imagePublicId = imagePublicId;
-
-        await tempChar.save();
-
-        res.status(201).json(tempChar);
+        res.status(201).json(newCharacter);
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get all characters
+// READ ALL
 exports.getAllCharacters = async (req, res) => {
     try {
-        const characters = await Character.find().sort({ created_at: -1 });
+        const characters = await Character.findAll({ order: [['created_at', 'DESC']] });
         res.json(characters);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Get single character
+// READ BY ID
 exports.getCharacterById = async (req, res) => {
     try {
-        const character = await Character.findById(req.params.id);
+        const character = await Character.findByPk(req.params.id);
         if (!character) return res.status(404).json({ error: 'Character not found' });
 
         res.json(character);
@@ -88,52 +81,44 @@ exports.getCharacterById = async (req, res) => {
     }
 };
 
-// Update character
+// UPDATE
 exports.updateCharacter = async (req, res) => {
     try {
-        const character = await Character.findById(req.params.id);
+        const character = await Character.findByPk(req.params.id);
         if (!character) return res.status(404).json({ error: 'Character not found' });
 
-        const updatableFields = [
-            'name', 'sub_title', 'line', 'badge', 'gender',
-            'age', 'description', 'ability', 'redeemed', 'bio_description', 'birthday'
-        ];
-
-        updatableFields.forEach(field => {
+        const fields = ['name', 'sub_title', 'description', 'ability', 'line', 'badge', 'gender', 'age',
+            'redeemed', 'bio_description', 'birthday'];
+        fields.forEach(field => {
             if (req.body[field] !== undefined) {
                 character[field] = req.body[field];
             }
         });
 
-        // Handle new image upload
-        if (req.file?.path) {
+        // Replace image if new one provided
+        if (req.file?.buffer) {
             await deleteImage(character.imagePublicId);
 
-            const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                public_id: `character/${character._id}`,
-                overwrite: true,
-            });
-
-            character.image = uploadResult.secure_url;
-            character.imagePublicId = uploadResult.public_id;
+            const result = await uploadToCloudinary(req.file.buffer, `${character.id}`);
+            character.image = result.secure_url;
+            character.imagePublicId = result.public_id;
         }
 
         await character.save();
-
         res.json({ message: 'Character updated', character });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Delete character
+// DELETE
 exports.deleteCharacter = async (req, res) => {
     try {
-        const character = await Character.findById(req.params.id);
+        const character = await Character.findByPk(req.params.id);
         if (!character) return res.status(404).json({ error: 'Character not found' });
 
         await deleteImage(character.imagePublicId);
-        await character.deleteOne();
+        await character.destroy();
 
         res.json({ message: 'Character deleted successfully' });
     } catch (err) {
