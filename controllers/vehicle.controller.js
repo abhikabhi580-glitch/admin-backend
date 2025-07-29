@@ -1,35 +1,18 @@
 const Vehicle = require('../models/vehicle.model');
-const cloudinary = require('../config/cloudinary');
-const streamifier = require('streamifier');
+const { uploadFile, deleteFile } = require('../services/ftpService');
+const fs = require('fs');
+const path = require('path');
 
-// Helper: Upload buffer to Cloudinary
-const uploadToCloudinary = (buffer, publicId) => {
-    return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            {
-                public_id: publicId,
-                folder: 'admin-panel/vehicle',
-                overwrite: true,
-                resource_type: 'image',
-            },
-            (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-            }
-        );
-        streamifier.createReadStream(buffer).pipe(stream);
-    });
-};
-
-// Helper: Delete from Cloudinary
-const deleteImage = async (publicId) => {
-    if (publicId) {
-        try {
-            await cloudinary.uploader.destroy(publicId);
-        } catch (err) {
-            console.error('Cloudinary delete error:', err.message);
-        }
+// Helper: Write buffer to /temp folder
+const writeTempFile = (filename, buffer) => {
+    const tempDir = path.join(__dirname, '../temp');
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir);
     }
+
+    const tempPath = path.join(tempDir, filename);
+    fs.writeFileSync(tempPath, buffer);
+    return tempPath;
 };
 
 // CREATE Vehicle
@@ -57,10 +40,17 @@ exports.createVehicle = async (req, res) => {
         });
 
         if (req.file?.buffer) {
-            const upload = await uploadToCloudinary(req.file.buffer, `${newVehicle.id}`);
-            newVehicle.image = upload.secure_url;
-            newVehicle.imagePublicId = upload.public_id;
+            const filename = `vehicle-${newVehicle.id}-${Date.now()}.jpg`;
+            const tempPath = writeTempFile(filename, req.file.buffer);
+
+            const remotePath = `/uploads/vehicles/${filename}`;
+            await uploadFile(tempPath, remotePath);
+
+            newVehicle.image = `${process.env.FILE_BASE_URL}/uploads/vehicles/${filename}`;
+            newVehicle.imagePublicId = remotePath;
             await newVehicle.save();
+
+            fs.unlinkSync(tempPath); // cleanup
         }
 
         res.status(201).json(newVehicle);
@@ -79,7 +69,7 @@ exports.getAllVehicles = async (req, res) => {
     }
 };
 
-// GET Vehicle By ID
+// GET Vehicle by ID
 exports.getVehicleById = async (req, res) => {
     try {
         const vehicle = await Vehicle.findByPk(req.params.id);
@@ -107,17 +97,27 @@ exports.updateVehicle = async (req, res) => {
             'ideal_use_case',
         ];
 
-        fields.forEach((field) => {
+        fields.forEach(field => {
             if (req.body[field] !== undefined) {
                 vehicle[field] = req.body[field];
             }
         });
 
         if (req.file?.buffer) {
-            await deleteImage(vehicle.imagePublicId);
-            const upload = await uploadToCloudinary(req.file.buffer, `${vehicle.id}`);
-            vehicle.image = upload.secure_url;
-            vehicle.imagePublicId = upload.public_id;
+            if (vehicle.imagePublicId) {
+                await deleteFile(vehicle.imagePublicId);
+            }
+
+            const filename = `vehicle-${vehicle.id}-${Date.now()}.jpg`;
+            const tempPath = writeTempFile(filename, req.file.buffer);
+
+            const remotePath = `/uploads/vehicles/${filename}`;
+            await uploadFile(tempPath, remotePath);
+
+            vehicle.image = `${process.env.FILE_BASE_URL}/uploads/vehicles/${filename}`;
+            vehicle.imagePublicId = remotePath;
+
+            fs.unlinkSync(tempPath); // cleanup
         }
 
         await vehicle.save();
@@ -133,9 +133,11 @@ exports.deleteVehicle = async (req, res) => {
         const vehicle = await Vehicle.findByPk(req.params.id);
         if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
 
-        await deleteImage(vehicle.imagePublicId);
-        await vehicle.destroy();
+        if (vehicle.imagePublicId) {
+            await deleteFile(vehicle.imagePublicId);
+        }
 
+        await vehicle.destroy();
         res.json({ message: 'Vehicle deleted successfully' });
     } catch (err) {
         res.status(500).json({ error: err.message });

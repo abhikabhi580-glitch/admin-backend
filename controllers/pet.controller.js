@@ -1,36 +1,18 @@
 const Pet = require('../models/pet.model');
-const cloudinary = require('../config/cloudinary');
-const streamifier = require('streamifier');
+const { uploadFile, deleteFile } = require('../services/ftpService');
+const fs = require('fs');
+const path = require('path');
 
-// Helper: Upload image from buffer
-const uploadToCloudinary = (buffer, publicId) => {
-    return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            {
-                public_id: publicId,
-                folder: 'admin-panel/pet',
-                overwrite: true,
-                resource_type: 'image',
-            },
-            (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-            }
-        );
-
-        streamifier.createReadStream(buffer).pipe(stream);
-    });
-};
-
-// Helper: Delete Cloudinary image
-const deleteImage = async (publicId) => {
-    if (publicId) {
-        try {
-            await cloudinary.uploader.destroy(publicId);
-        } catch (err) {
-            console.error('Cloudinary delete error:', err.message);
-        }
+// Helper: Write buffer to /temp
+const writeTempFile = (filename, buffer) => {
+    const tempDir = path.join(__dirname, '../temp');
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir);
     }
+
+    const tempPath = path.join(tempDir, filename);
+    fs.writeFileSync(tempPath, buffer);
+    return tempPath;
 };
 
 // CREATE Pet
@@ -47,10 +29,17 @@ exports.createPet = async (req, res) => {
         });
 
         if (req.file?.buffer) {
-            const result = await uploadToCloudinary(req.file.buffer, `${newPet.id}`);
-            newPet.image = result.secure_url;
-            newPet.imagePublicId = result.public_id;
+            const filename = `pet-${newPet.id}-${Date.now()}.jpg`;
+            const tempPath = writeTempFile(filename, req.file.buffer);
+
+            const remotePath = `/uploads/pets/${filename}`;
+            await uploadFile(tempPath, remotePath);
+
+            newPet.image = `${process.env.FILE_BASE_URL}/uploads/pets/${filename}`;
+            newPet.imagePublicId = remotePath;
             await newPet.save();
+
+            fs.unlinkSync(tempPath); // Clean up temp file
         }
 
         res.status(201).json(newPet);
@@ -59,7 +48,7 @@ exports.createPet = async (req, res) => {
     }
 };
 
-// READ All Pets
+// READ ALL Pets
 exports.getAllPets = async (req, res) => {
     try {
         const pets = await Pet.findAll({ order: [['created_at', 'DESC']] });
@@ -95,10 +84,20 @@ exports.updatePet = async (req, res) => {
         });
 
         if (req.file?.buffer) {
-            await deleteImage(pet.imagePublicId);
-            const result = await uploadToCloudinary(req.file.buffer, `${pet.id}`);
-            pet.image = result.secure_url;
-            pet.imagePublicId = result.public_id;
+            if (pet.imagePublicId) {
+                await deleteFile(pet.imagePublicId);
+            }
+
+            const filename = `pet-${pet.id}-${Date.now()}.jpg`;
+            const tempPath = writeTempFile(filename, req.file.buffer);
+
+            const remotePath = `/uploads/pets/${filename}`;
+            await uploadFile(tempPath, remotePath);
+
+            pet.image = `${process.env.FILE_BASE_URL}/uploads/pets/${filename}`;
+            pet.imagePublicId = remotePath;
+
+            fs.unlinkSync(tempPath); // Delete temp file
         }
 
         await pet.save();
@@ -114,9 +113,11 @@ exports.deletePet = async (req, res) => {
         const pet = await Pet.findByPk(req.params.id);
         if (!pet) return res.status(404).json({ error: 'Pet not found' });
 
-        await deleteImage(pet.imagePublicId);
-        await pet.destroy();
+        if (pet.imagePublicId) {
+            await deleteFile(pet.imagePublicId);
+        }
 
+        await pet.destroy();
         res.json({ message: 'Pet deleted successfully' });
     } catch (err) {
         res.status(500).json({ error: err.message });
