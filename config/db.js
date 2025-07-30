@@ -13,6 +13,8 @@ const connectDB = async () => {
         console.log('✅ Models synchronized');
     } catch (err) {
         console.error('❌ DB Error:', err.message);
+        console.error(err); // <-- print the full error object
+        console.error(JSON.stringify(err, null, 2)); // <-- even better: stringify it
         process.exit(1);
     }
 };
