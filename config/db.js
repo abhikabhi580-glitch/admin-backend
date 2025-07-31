@@ -8,6 +8,7 @@ const connectDB = async () => {
         require('../models/character.model');
         require('../models/pet.model');
         require('../models/vehicle.model');
+        require('../models/weaponType.model');
 
         await sequelize.sync({ alter: true });
         console.log('✅ Models synchronized');

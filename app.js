@@ -13,5 +13,6 @@ app.use('/api/characters', require('./routes/character.routes'));
 app.use('/api/pets', require('./routes/pet.routes'));
 app.use('/api/vehicles', require('./routes/vehicle.routes'));
 app.use('/api/dashboard', require('./routes/dashboard.routes'));
+app.use('/api/weapontype', require('./routes/weaponType.routes'));
 
 module.exports = app;
